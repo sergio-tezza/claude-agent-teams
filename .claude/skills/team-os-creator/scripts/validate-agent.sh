@@ -27,7 +27,9 @@
 #   hook   : block-git-push.sh obrigatório em todo agente com Bash cujo archetype
 #            NÃO é devops; proibido em archetype devops
 #   hooks: : estrutura válida (evento conhecido → lista com matcher/hooks[].command)
-#            e cada command referenciado existe em .claude/hooks/
+#            e cada command referenciado existe em .claude/hooks/; $CLAUDE_PROJECT_DIR
+#            sempre ENTRE ASPAS no command ("$CLAUDE_PROJECT_DIR"/...) — também
+#            checado (global) em settings.json, team-os e team-os-creator
 #   tools  : reviewer/strategist e implementer devem ter Write E Edit;
 #            mcp__<server>[__<tool>]: <server> precisa estar em reference/mcp-servers.md
 #            (ERRO); forma longa mcp__<server>__<tool> = WARN (prefira a curta)
@@ -383,6 +385,11 @@ validate() {
     [ "$n_type" -ne "$n_cmd" ] && errors+=("hooks: $n_type '- type: command' vs $n_cmd 'command:' — cada type precisa do seu command")
   fi
 
+  # ── command de hook com $CLAUDE_PROJECT_DIR sem aspas (sh quebra path com espaço) ──
+  local bad_cmd
+  bad_cmd="$(printf '%s\n' "$FM" | grep -E '^[[:space:]]*command:.*CLAUDE_PROJECT_DIR' | grep -vE '\\?"\$CLAUDE_PROJECT_DIR\\?"/' || true)"
+  [ -n "$bad_cmd" ] && errors+=("hooks: \$CLAUDE_PROJECT_DIR sem aspas no command — use command: '\"\$CLAUDE_PROJECT_DIR\"/.claude/hooks/<script>.sh' (path com espaço quebra o hook)")
+
   # ── Hooks referenciados existem fisicamente ──
   local hook_ref
   for hook_ref in $(printf '%s\n' "$FM" | grep -oE '\.claude/hooks/[A-Za-z0-9._-]+\.sh' | sort -u); do
@@ -527,6 +534,18 @@ else
       GLOBAL_ERRORS=$((GLOBAL_ERRORS + 1))
     fi
   done < "$MAP_FILE"
+
+  # command de hook com $CLAUDE_PROJECT_DIR sem aspas em settings/templates/docs = ERRO
+  UNQ_HOOKS="$(grep -rnE 'command"?:[[:space:]]*["'"'"']?\$\{?CLAUDE_PROJECT_DIR' \
+    .claude/settings.json "$SKILLS_DIR/team-os-creator" "$SKILLS_DIR/team-os" 2>/dev/null || true)"
+  if [ -n "$UNQ_HOOKS" ]; then
+    while IFS= read -r l; do
+      echo "❌ hook com \$CLAUDE_PROJECT_DIR sem aspas (use \"\$CLAUDE_PROJECT_DIR\"/...): $l"
+      GLOBAL_ERRORS=$((GLOBAL_ERRORS + 1))
+    done <<EOF_UNQ
+$UNQ_HOOKS
+EOF_UNQ
+  fi
 
   # repetição de cor na mesma squad = WARNING — só quando a squad tem ≤ 8 agentes
   # (8 cores disponíveis; acima disso a repetição é inevitável)

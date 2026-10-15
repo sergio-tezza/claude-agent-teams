@@ -493,7 +493,8 @@ ensure_gitignore
 
 # ── Settings.json — delegado ao ensure-settings.sh da team-os (fonte única) ──
 # Cria o arquivo se não existe e SÓ ADICIONA o que falta num existente (nunca
-# sobrescreve valor, valida o JSON final). No dry-run mostra o merge sem gravar.
+# sobrescreve valor, valida o JSON final). Única reescrita: põe aspas em
+# $CLAUDE_PROJECT_DIR no command dos hooks (path com espaço). No dry-run mostra o merge sem gravar.
 ENSURE_SETTINGS="$SOURCE/.claude/skills/team-os/scripts/ensure-settings.sh"
 TARGET_SETTINGS="$TARGET/.claude/settings.json"
 if [ -f "$ENSURE_SETTINGS" ]; then

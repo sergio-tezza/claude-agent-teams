@@ -3,6 +3,9 @@
 # Garante as chaves mínimas de Agent Teams no .claude/settings.json do PROJETO.
 # Idempotente: SÓ ADICIONA o que falta — nunca duplica, nunca remove, nunca
 # sobrescreve valor existente (divergência vira aviso). Sempre valida o JSON final.
+# Única reescrita: command de hook que começa com $CLAUDE_PROJECT_DIR SEM aspas
+# vira "$CLAUDE_PROJECT_DIR"/... (sem aspas o /bin/sh quebra o path em projetos
+# com espaço no nome e o hook nunca roda). Idempotente.
 #
 # Garante:
 #   env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"
@@ -53,7 +56,7 @@ for h in block-worktree.sh guard-smart-memory-read.sh guard-message-size.sh task
 done
 
 ES_DRY_RUN="$DRY_RUN" ES_SETTINGS_FILE="$SETTINGS_FILE" python3 <<'PYEOF'
-import copy, json, os, sys
+import copy, json, os, re, sys
 
 path = os.environ["ES_SETTINGS_FILE"]
 dry = os.environ.get("ES_DRY_RUN") == "1"
@@ -140,10 +143,25 @@ def ensure_hook(event, matcher, script_name, match_on_matcher):
     if not isinstance(entries, list):
         warnings.append(f"~ hooks.{event} existe mas não é lista — deixado intacto (corrija manualmente)")
         return
-    command = f"$CLAUDE_PROJECT_DIR/.claude/hooks/{script_name}"
+    command = f'"$CLAUDE_PROJECT_DIR"/.claude/hooks/{script_name}'
     entries.append({"matcher": matcher, "hooks": [{"type": "command", "command": command}]})
     label = matcher if matcher else "(sem matcher)"
     changes.append(f"+ hooks.{event} [{label}] → {script_name}")
+
+# Migração: $CLAUDE_PROJECT_DIR sem aspas no início do command → "$CLAUDE_PROJECT_DIR".
+UNQUOTED = re.compile(r'^\$(?:CLAUDE_PROJECT_DIR\b|\{CLAUDE_PROJECT_DIR\})')
+if hooks is not None:
+    for event, entries in hooks.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            for h in entry.get("hooks", []) or []:
+                cmd = h.get("command") if isinstance(h, dict) else None
+                if isinstance(cmd, str) and UNQUOTED.match(cmd):
+                    h["command"] = UNQUOTED.sub('"$CLAUDE_PROJECT_DIR"', cmd, count=1)
+                    changes.append(f"~ hooks.{event}: aspas em $CLAUDE_PROJECT_DIR → {h['command']}")
 
 # PreToolUse: o mesmo script em dois matchers distintos → deduplicar POR matcher.
 ensure_hook("PreToolUse", "Agent|Task|EnterWorktree", "block-worktree.sh", match_on_matcher=True)

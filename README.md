@@ -574,7 +574,7 @@ Para forçar outro modelo num agente `inherit`, especifique no spawn: `"Spawn {n
 
 ## 10. Hooks de qualidade
 
-12 hooks em `.claude/hooks/`, referenciados no frontmatter dos agentes ou registrados no `settings.json` (pelo `ensure-settings.sh`/`*install`). Todos são bash 3.2-safe, testados com payloads reais do Claude Code por `scripts/test-hooks.sh` (**493 casos**, roda no CI) e com fallback em grep quando o `python3` falta.
+12 hooks em `.claude/hooks/`, referenciados no frontmatter dos agentes ou registrados no `settings.json` (pelo `ensure-settings.sh`/`*install`). Todos são bash 3.2-safe, testados com payloads reais do Claude Code por `scripts/test-hooks.sh` (**507 casos**, roda no CI) e com fallback em grep quando o `python3` falta. O `command` de todo hook usa a variável **entre aspas** — `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<script>.sh` — porque o `/bin/sh` quebra o path de projetos com espaço no nome (ex.: `SmartSenior | Operacao`) e o hook simplesmente não roda; o `*audit` reprova a forma sem aspas e o `ensure-settings.sh` migra settings antigos.
 
 **Guards de git (`PreToolUse` em `Bash`)** — além de `git push` direto, os dois cobrem flags globais (`git -C`, `--git-dir`, `-c alias.x=push`), wrappers (`env`, `sudo`, `\git`, `/usr/bin/git`), comandos multilinha e encadeados, `git send-pack`, `gh pr create/merge`, `gh release create`, `gh api` de escrita em PRs, e **bloqueiam shell embutido** (`sh -c`, `bash -c`, `eval`, `xargs`, `find -exec`, `python3 -c`/`node -e` com git) e variáveis no lugar do comando — expansão indireta não é permitida para operações git.
 
@@ -688,7 +688,7 @@ docs/smart-memory/                       ← no projeto destino (Obsidian)
 1. Editar agente/skill AQUI (nunca no destino) — agentes via /team-os-creator (*create, *squad, *migrate)
 2. bash .claude/skills/team-os-creator/scripts/validate-agent.sh            → 95/95 agentes conformes (= *audit)
 3. bash .claude/skills/team-os-creator/scripts/validate-agent.sh --skills   → lint das 108 skills
-4. bash .claude/skills/team-os-creator/scripts/test-hooks.sh                → 493/493 casos dos hooks
+4. bash .claude/skills/team-os-creator/scripts/test-hooks.sh                → 507/507 casos dos hooks
 5. python3 .claude/skills/team-os-creator/scripts/generate-agents-page.py   → regenera docs/agentes.html
 6. commit no CT (Conventional Commits em português; registrar no CHANGELOG.md)
 7. /team-os-creator *propagate   → leva aos projetos destino (--match-target-squads)

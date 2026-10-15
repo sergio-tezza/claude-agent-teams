@@ -10,6 +10,8 @@
 # Monta um repositório git temporário com docs/smart-memory/stories/{active,in-review,backlog,done}
 # e stories de exemplo, roda cada hook e confere o exit code (0 = passa, 2 = bloqueia).
 # Também simula falha do python3 (PATH com python3 falso) para cobrir os fallbacks em grep.
+# E roda os commands reais (settings.json + frontmatter) via sh -c com CLAUDE_PROJECT_DIR
+# contendo espaço e "|" (regressão do $CLAUDE_PROJECT_DIR sem aspas).
 #
 # bash 3.2-safe (sem mapfile, ${x,,}, declare -A, grep -P). Dependências: bash, python3, git.
 # Roda no macOS e no CI ubuntu. Saída: PASS/FAIL por caso + resumo N/N; exit 1 se algum falhar.
@@ -802,6 +804,85 @@ expect 0 $H "$(msg_payload "$(mk_lines 50 '[handoff] pronto')")" "fallback: [han
 expect 2 $H "$(msg_payload "$(mk_lines 61 '[handoff] pronto')")" "fallback: [handoff] 61 linhas → bloqueia"
 expect 0 $H '{"tool_name":"SendMessage","tool_input":{"to":"dev","message":{"type":"shutdown_request"}}}' "fallback: JSON de protocolo → passa"
 TESTPATH="$PATH"
+
+# ── 12. Commands reais via sh -c com CLAUDE_PROJECT_DIR com espaço e "|" ─────
+# Regressão: $CLAUDE_PROJECT_DIR sem aspas quebra no /bin/sh quando o path do
+# projeto tem espaço ("SmartSenior | Operacao") e o hook nunca roda.
+section "commands (settings.json + frontmatter) via sh -c, projeto com espaço e |"
+SPACED="$TMP/Meu Projeto | Operacao"
+mkdir -p "$SPACED/.claude"
+ln -s "$HOOKS" "$SPACED/.claude/hooks"
+
+expect_cmd() {  # <rc esperado | !127> <command string> <payload> <rótulo>
+  local want="$1" cmd="$2" payload="$3" label="$4" rc ok=0
+  LAST_OUT=$(printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$SPACED" TMPDIR="$TMP/tmpd" sh -c "$cmd" 2>&1); rc=$?
+  TOTAL=$((TOTAL + 1))
+  case "$want" in
+    '!127') [ "$rc" -ne 127 ] && [ "$rc" -ne 126 ] && ok=1 ;;
+    *) [ "$rc" -eq "$want" ] && ok=1 ;;
+  esac
+  if [ $ok -eq 1 ]; then PASSED=$((PASSED + 1)); echo "PASS [sh -c] $label"
+  else FAILED=$((FAILED + 1)); echo "FAIL [sh -c] $label — esperado exit $want, obteve $rc ($cmd)"; printf '%s\n' "$LAST_OUT" | sed 's/^/      /'; fi
+}
+
+# controle negativo: a forma sem aspas falha (prova que o teste pega o bug)
+expect_cmd 127 '$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-push.sh' "$(bash_payload 'git push')" "sem aspas → path quebrado (127)"
+
+SETTINGS_CMDS=$(python3 -c '
+import json, sys
+s = json.load(open(sys.argv[1]))
+seen = []
+for entries in s.get("hooks", {}).values():
+    for e in entries:
+        for h in e.get("hooks", []):
+            c = h.get("command", "")
+            if "CLAUDE_PROJECT_DIR" in c and c not in seen:
+                seen.append(c)
+print("\n".join(seen))' "$CT_ROOT/.claude/settings.json")
+while IFS= read -r c; do
+  [ -n "$c" ] || continue
+  expect_cmd '!127' "$c" "$(tool_payload Noop)" "settings.json: ${c##*/} executa"
+done <<EOF_SC
+$SETTINGS_CMDS
+EOF_SC
+expect_cmd 2 "$(printf '%s\n' "$SETTINGS_CMDS" | grep -m1 block-worktree.sh)" "$(agent_payload worktree)" "settings.json: block-worktree.sh bloqueia worktree"
+
+AGENT_CMDS=$(python3 -c '
+import glob, re, sys
+seen = []
+for f in sorted(glob.glob(sys.argv[1] + "/.claude/agents/*.md")):
+    fm = open(f).read().split("\n---", 1)[0]
+    for m in re.finditer(r"^\s*command:\s*(.+?)\s*$", fm, re.M):
+        v = m.group(1)
+        if v[:1] == "\x27" and v[-1:] == "\x27": v = v[1:-1].replace("\x27\x27", "\x27")
+        elif v[:1] == "\"" and v[-1:] == "\"": v = v[1:-1].replace("\\\"", "\"")
+        if v not in seen: seen.append(v)
+print("\n".join(seen))' "$CT_ROOT")
+while IFS= read -r c; do
+  [ -n "$c" ] || continue
+  case "$c" in
+    *block-git-push.sh) expect_cmd 2 "$c" "$(bash_payload 'git push')" "frontmatter: block-git-push.sh bloqueia git push" ;;
+    *guard-push-branch.sh) expect_cmd 2 "$c" "$(bash_payload 'git push' "$REPO_FEATURE")" "frontmatter: guard-push-branch.sh bloqueia push fora da main" ;;
+    *) expect_cmd '!127' "$c" "$(tool_payload Noop)" "frontmatter: ${c##*/} executa" ;;
+  esac
+done <<EOF_AC
+$AGENT_CMDS
+EOF_AC
+
+# ensure-settings.sh migra a forma antiga (sem aspas) de um destino existente
+ES_PROJ="$TMP/Destino | Antigo"
+mkdir -p "$ES_PROJ/.claude"
+ln -s "$HOOKS" "$ES_PROJ/.claude/hooks"
+printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"%s"}]}]}}\n' \
+  '$CLAUDE_PROJECT_DIR/.claude/hooks/block-worktree.sh' > "$ES_PROJ/.claude/settings.json"
+bash "$CT_ROOT/.claude/skills/team-os/scripts/ensure-settings.sh" --project-dir "$ES_PROJ" >/dev/null 2>&1
+ES_UNQ=$(python3 -c '
+import json, sys
+s = json.load(open(sys.argv[1]))
+print(sum(1 for es in s["hooks"].values() for e in es for h in e["hooks"] if not h["command"].startswith("\"$CLAUDE_PROJECT_DIR\"/")))' "$ES_PROJ/.claude/settings.json")
+TOTAL=$((TOTAL + 1))
+if [ "$ES_UNQ" = "0" ]; then PASSED=$((PASSED + 1)); echo "PASS [ensure-settings] migra command sem aspas → \"\$CLAUDE_PROJECT_DIR\"/..."
+else FAILED=$((FAILED + 1)); echo "FAIL [ensure-settings] $ES_UNQ command(s) ainda sem aspas após o merge"; fi
 
 # ── Resumo ───────────────────────────────────────────────────────────────────
 echo ""

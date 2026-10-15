@@ -11,7 +11,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-push-branch.sh"
+          command: '"$CLAUDE_PROJECT_DIR"/.claude/hooks/guard-push-branch.sh'
 ---
 
 <!-- Placeholders substituídos por generate-agent.sh (str.replace literal): {NAME} {PERSONA} {ROLE_TITLE} {COLOR} {DESCRIPTION} e {SQUAD} = prefixo da squad (dev, sites, social, traffic, pm, sales, brand, finance, legal, seo). A área na smart-memory é docs/smart-memory/agents/{SQUAD}/<área>/ — ajuste <área> se o papel tiver nome próprio (ex.: frontend, copy). -->

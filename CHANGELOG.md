@@ -2,6 +2,14 @@
 
 Todas as mudanças relevantes deste repositório. Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); commits seguem [Conventional Commits](https://www.conventionalcommits.org/pt-br/).
 
+## [Não lançado]
+
+### Corrigido
+- **Hooks não rodavam em projetos com espaço no nome** (ex.: `SmartSenior | Operacao`): o `command` usava `$CLAUDE_PROJECT_DIR/.claude/hooks/<script>.sh` sem aspas, o `/bin/sh` quebrava o path e todos os hooks do projeto (`block-worktree`, `guard-smart-memory-read`, `guard-message-size`, gates de task) e do frontmatter (`block-git-push`, `guard-push-branch`) falhavam em silêncio. Agora é `"$CLAUDE_PROJECT_DIR"/.claude/hooks/<script>.sh` em `settings.json`, nos 95 agentes, nos 9 templates e nas referências (`settings-canonico.md`, `hooks-de-time.md`, `team-os-creator/SKILL.md`).
+- `ensure-settings.sh` grava a forma com aspas e **migra** settings existentes (command que começa com `$CLAUDE_PROJECT_DIR`/`${CLAUDE_PROJECT_DIR}` sem aspas), de forma idempotente — o `*propagate` corrige os destinos sozinho.
+- `*audit` (`validate-agent.sh`) reprova a forma sem aspas no frontmatter dos agentes e, nos checks globais, em `settings.json`, `team-os` e `team-os-creator`.
+- `test-hooks.sh`: 14 casos novos (507 no total) — roda os commands reais de `settings.json` e do frontmatter via `sh -c` com `CLAUDE_PROJECT_DIR` contendo espaço e `|`, controle negativo da forma antiga e a migração do `ensure-settings.sh`.
+
 ## [2.3.0] — 2026-09-26 · Economia de tokens e painéis ao vivo
 
 ### Adicionado
