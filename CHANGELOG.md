@@ -4,6 +4,9 @@ Todas as mudanças relevantes deste repositório. Formato baseado em [Keep a Cha
 
 ## [Não lançado]
 
+### Alterado
+- **IRIS (`social-photo`) gera imagens pelo MCP do Magnific em vez do Freepik.** O Freepik virou Magnific; o MCP oficial é `https://mcp.magnific.com` (OAuth com a conta Magnific, sem API key). `tools:` passa de `mcp__freepik` para `mcp__magnific`; o fluxo usa `images_models_list`/`images_models_show` (modelo e parâmetros vêm do servidor, não ficam fixos no agente), `images_generate`, `creation_status`/`creations_wait`, `images_upscale`, `images_crop`/`images_resize`, `images_remove_background` e `account_balance` antes de lote grande. `reference/mcp-servers.md` ganha a linha Magnific e mantém o Freepik como legado; preset `social`, `social-freepik-generation` (nome mantido), `social-cinematic-composition`, README e `docs/agentes.html` atualizados.
+
 ## [2.4.0] — 2026-10-14
 
 ### Adicionado
